@@ -735,11 +735,7 @@
     <div class="form-card" id="prof-targets" style="margin-bottom:16px;"></div>
 
     <div class="settings-list">
-      <div class="settings-item" onclick="showApiKeyModal()">
-        <span class="settings-icon">🔑</span>
-        <span class="settings-text">Update API Key</span>
-        <span class="settings-chevron">›</span>
-      </div>
+
       <div class="settings-item" onclick="resetApp()">
         <span class="settings-icon">🔄</span>
         <span class="settings-text">Reset & Start Over</span>
@@ -787,68 +783,12 @@ let meals = [];
 let pendingMeal = null;
 let chatHistory = [];
 let selectedGoal = 'maintain';
-let ANTHROPIC_KEY = localStorage.getItem('nutrisense_key') || '';
+const PROXY_URL = 'https://nutrisense-proxy.tirthachovatia270397.workers.dev';
 
-window.addEventListener('DOMContentLoaded', () => {
-  if (!ANTHROPIC_KEY) showApiKeyModal();
-});
-
-function showApiKeyModal() {
-  const existing = document.getElementById('apikey-modal');
-  if (existing) { existing.style.display = 'flex'; return; }
-  const modal = document.createElement('div');
-  modal.id = 'apikey-modal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:#111811;border:1px solid rgba(93,223,122,0.25);border-radius:20px;padding:28px;max-width:400px;width:100%;">
-      <div style="font-size:36px;text-align:center;margin-bottom:14px;">🔑</div>
-      <h2 style="font-family:Sora,sans-serif;font-size:20px;font-weight:700;text-align:center;color:#e8f5e9;margin-bottom:8px;">Enter your Anthropic API Key</h2>
-      <p style="font-size:13px;color:#a5c8a8;text-align:center;margin-bottom:8px;line-height:1.6;">Required to analyse food photos and chat with NutriBot.</p>
-      <div style="background:#0d1f0d;border:1px solid rgba(93,223,122,0.15);border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:#a5c8a8;line-height:1.7;">
-        <strong style="color:#5ddf7a;">How to get your free API key:</strong><br>
-        1. Go to <a href="https://console.anthropic.com" target="_blank" style="color:#5ddf7a;">console.anthropic.com</a><br>
-        2. Sign up / Log in<br>
-        3. Click <strong style="color:#e8f5e9;">API Keys</strong> in the left menu<br>
-        4. Click <strong style="color:#e8f5e9;">Create Key</strong> and copy it<br>
-        5. Paste it below ↓
-      </div>
-      <input id="apikey-input" type="password" placeholder="sk-ant-api03-..." autocomplete="off"
-        style="width:100%;background:#182018;border:1px solid rgba(93,223,122,0.2);border-radius:12px;padding:13px 16px;color:#e8f5e9;font-size:14px;outline:none;font-family:DM Sans,sans-serif;box-sizing:border-box;margin-bottom:12px;">
-      <div id="apikey-error" style="color:#ff6b6b;font-size:12px;text-align:center;margin-bottom:8px;display:none;"></div>
-      <button onclick="saveApiKey()" style="width:100%;background:linear-gradient(135deg,#5ddf7a,#3abf58);color:#0a0f0a;font-family:Sora,sans-serif;font-weight:700;font-size:16px;padding:14px;border:none;border-radius:12px;cursor:pointer;">Save & Continue</button>
-      <p style="font-size:11px;color:#607060;text-align:center;margin-top:12px;">Your key is stored only in your browser. Never sent anywhere else.</p>
-    </div>`;
-  document.body.appendChild(modal);
-  setTimeout(() => { const el = document.getElementById('apikey-input'); if(el) el.focus(); }, 100);
-}
-
-function saveApiKey() {
-  const val = document.getElementById('apikey-input').value.trim();
-  const errEl = document.getElementById('apikey-error');
-  if (!val) {
-    errEl.textContent = '⚠️ Please paste your API key above.';
-    errEl.style.display = 'block';
-    return;
-  }
-  if (!val.startsWith('sk-')) {
-    errEl.textContent = '⚠️ Key should start with "sk-ant-...". Please check and try again.';
-    errEl.style.display = 'block';
-    return;
-  }
-  errEl.style.display = 'none';
-  ANTHROPIC_KEY = val;
-  localStorage.setItem('nutrisense_key', val);
-  document.getElementById('apikey-modal').style.display = 'none';
-  showToast('✅ API key saved! AI features are now active.');
-}
+window.addEventListener('DOMContentLoaded', () => {});
 
 function getHeaders() {
-  return {
-    'Content-Type': 'application/json',
-    'x-api-key': ANTHROPIC_KEY,
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true'
-  };
+  return { 'Content-Type': 'application/json' };
 }
 
 /* ═══════════════════════════════════════════════════
@@ -981,20 +921,18 @@ function handleFoodPhoto(event) {
 }
 
 async function analyzeFood(base64) {
-  if (!ANTHROPIC_KEY) { showApiKeyModal(); document.getElementById('analyzing-badge').style.display='none'; return; }
   const pure = base64.split(',')[1];
   const mime = base64.split(';')[0].split(':')[1];
 
-  // Validate image type — Anthropic only accepts jpeg, png, gif, webp
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   if (!allowedTypes.includes(mime)) {
-    showToast('⚠️ Please use a JPG, PNG, or WebP photo.');
+    showToast('⚠️ Please use a JPG or PNG photo.');
     document.getElementById('analyzing-badge').style.display = 'none';
     return;
   }
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch(PROXY_URL, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -1026,44 +964,17 @@ If you cannot identify food in the image, use "Unknown Food" as name and provide
       })
     });
 
-    // Check for HTTP errors (e.g. 401 bad key, 400 bad request)
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      const errMsg = errData?.error?.message || ('HTTP error ' + resp.status);
-      if (resp.status === 401) {
-        showToast('❌ Invalid API key. Tap here to update it.');
-        showApiKeyModal();
-      } else if (resp.status === 400) {
-        showToast('⚠️ Image could not be read by AI. Try a clearer photo.');
-      } else {
-        showToast('⚠️ API Error: ' + errMsg);
-      }
-      document.getElementById('analyzing-badge').style.display = 'none';
-      console.error('Anthropic API error:', errMsg);
-      return;
-    }
-
     const data = await resp.json();
     const text = data.content.map(i => i.text || '').join('');
     const clean = text.replace(/```json|```/g, '').trim();
-
-    let food;
-    try {
-      food = JSON.parse(clean);
-    } catch(parseErr) {
-      showToast('⚠️ AI gave an unexpected response. Try again.');
-      document.getElementById('analyzing-badge').style.display = 'none';
-      console.error('JSON parse error:', clean);
-      return;
-    }
+    const food = JSON.parse(clean);
 
     pendingMeal = food;
     showFoodResult(food);
   } catch(err) {
-    // Network-level error (no internet, CORS, etc.)
-    showToast('⚠️ Network error. Check your internet connection and API key.');
+    showToast('⚠️ Could not analyze photo. Check internet & try again.');
     document.getElementById('analyzing-badge').style.display = 'none';
-    console.error('Fetch error:', err);
+    console.error('analyzeFood error:', err);
   }
 }
 
@@ -1182,31 +1093,16 @@ Meals logged today: ${meals.length > 0 ? meals.map(m => m.name).join(', ') : 'No
 Respond in a warm, helpful, and concise way. Use emojis. Give actionable advice. Keep responses under 120 words.`;
 
   try {
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    const resp = await fetch(PROXY_URL, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-opus-4-5',
         max_tokens: 1000,
         system: systemPrompt,
         messages: chatHistory.slice(-12)
       })
     });
-    // Check for HTTP errors
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      const errMsg = errData?.error?.message || ('HTTP error ' + resp.status);
-      removeTyping(typingId);
-      if (resp.status === 401) {
-        addBubble('bot', '❌ Your API key is invalid. Please update it in Profile → Change API Key.');
-        showApiKeyModal();
-      } else {
-        addBubble('bot', '⚠️ Error: ' + errMsg + '. Please try again!');
-      }
-      console.error('Chat API error:', errMsg);
-      return;
-    }
-
     const data = await resp.json();
     const reply = data.content.map(i => i.text || '').join('');
 
@@ -1215,8 +1111,8 @@ Respond in a warm, helpful, and concise way. Use emojis. Give actionable advice.
     chatHistory.push({ role: 'assistant', content: reply });
   } catch(err) {
     removeTyping(typingId);
-    addBubble('bot', '⚠️ Network error — check your internet and try again. 🔄');
-    console.error('Chat fetch error:', err);
+    addBubble('bot', '⚠️ Network error. Check your internet and try again. 🔄');
+    console.error('Chat error:', err);
   }
 }
 
